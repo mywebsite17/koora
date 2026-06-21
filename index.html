@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200">
+    <meta name="viewport" content="width=device-width, initial-scale=1200">
     <title>مشغل IPTV السحابي المتكامل</title>
     
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
@@ -26,7 +26,7 @@
             display: flex; justify-content: center; gap: 6px; align-items: center;
             flex-wrap: wrap;
         }
-        .upload-btn, .add-folder-btn, .export-btn {
+        .upload-btn, .add-folder-btn, .export-btn, .batch-btn {
             padding: 10px 12px; border: none; 
             border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
             color: white;
@@ -34,6 +34,7 @@
         .upload-btn { background-color: #e50914; }
         .add-folder-btn { background-color: #28a745; }
         .export-btn { background-color: #6f42c1; }
+        .batch-btn { background-color: #fd7e14; }
         
         .mode-btn {
             background-color: #007bff; color: white; padding: 10px 12px; border: none;
@@ -42,7 +43,6 @@
         .mode-btn.web-mode { background-color: #17a2b8; color: white; }
         .mode-btn.external-mode { background-color: #ff9800; color: #000; }
 
-        /* ستايلات الأزرار الجديدة المضافة بالشريط العلوي */
         .nav-btn {
             background-color: #495057; color: white; padding: 10px 12px; border: none;
             border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
@@ -111,11 +111,17 @@
         .channel-info { flex-grow: 1; display: flex; align-items: center; }
         
         .folder-actions { display: flex; align-items: center; gap: 5px; }
-        .delete-folder-btn, .import-to-folder-btn {
+        .delete-folder-btn, .import-to-folder-btn, .edit-folder-btn {
             background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px;
         }
         .import-to-folder-btn { color: #00ffcc; }
         .delete-folder-btn { color: #ff3333; }
+        .edit-folder-btn { color: #ffc107; }
+        
+        /* زر تعديل القناة المخصص */
+        .edit-channel-btn {
+            background: none; border: none; color: #007bff; font-size: 14px; cursor: pointer; padding: 5px; margin-left: 5px;
+        }
         
         .channel-item.active { background-color: #440000; }
         .sortable-ghost { opacity: 0.4; background-color: #e50914; }
@@ -124,13 +130,13 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="manifest" href="./manifest.json?v=v1782040422343">
-    <meta name="theme-color" content="#c270c0">
-    <link rel="apple-touch-icon" href="./icon-192.png?v=v1782040422343">
+    <link rel="manifest" href="./manifest.json?v=v1782041031058">
+    <meta name="theme-color" content="#7764ce">
+    <link rel="apple-touch-icon" href="./icon-192.png?v=v1782041031058">
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js?v=v1782040422343')
+          navigator.serviceWorker.register('./sw.js?v=v1782041031058')
             .then(reg => console.log('SW Registered'))
             .catch(err => console.log('SW Failed', err));
         });
@@ -144,6 +150,9 @@
         <input type="file" id="m3u-upload" accept=".m3u,.m3u8,text/plain">
         <button id="export-btn" class="export-btn">📤 تصدير القنوات</button>
         <button id="add-folder-btn" class="add-folder-btn">📁 مجلد جديد</button>
+        
+        <button id="batch-add-btn" class="batch-btn">🔗 مجموعة روابط</button>
+        
         <button id="mode-toggle-btn" class="mode-btn">📺 الوضع: داخلي</button>
         
         <button id="prev-btn" class="nav-btn">◀️ السابقة</button>
@@ -206,6 +215,7 @@
             return name.trim().replace(/[\.\$\#\[\]\/]/g, "-");
         }
 
+        // تبديل المود البرمجي مع تفعيل ميزة التشغيل التلقائي للقناة الحالية النشطة
         modeToggleBtn.onclick = () => {
             if (currentMode === 'internal') {
                 currentMode = 'web';
@@ -216,6 +226,12 @@
             }
             localStorage.setItem('global_play_mode', currentMode);
             updateModeButtonUI();
+
+            // التشغيل التلقائي المباشر بالمود الجديد فوراً
+            const activeChannel = document.querySelector('.channel-item.active');
+            if (activeChannel) {
+                handleChannelClick(activeChannel.dataset.url, activeChannel);
+            }
         };
 
         function updateModeButtonUI() {
@@ -290,7 +306,6 @@
             }
         }
 
-        // تفاصيل معالجة وظائف الأزرار الجديدة (إغلاق، ملاحة القنوات، ملء الشاشة)
         document.getElementById('close-player-btn').onclick = () => {
             video.pause();
             if (hls) hls.destroy();
@@ -391,6 +406,7 @@
                         <span>📁 <span class="folder-title">${categoryName}</span> <small class="channel-count" style="color:#aaa;">(${channelsArray.length})</small></span>
                     </div>
                     <div class="folder-actions">
+                        <button class="edit-folder-btn" title="تعديل اسم المجلد">✏️</button>
                         <button class="import-to-folder-btn" title="استيراد">📥</button>
                         <button class="delete-folder-btn" title="مسح">🗑️</button>
                         <span class="toggle-icon">▼</span>
@@ -411,8 +427,40 @@
                         channelDiv.innerHTML = `
                             <span class="drag-handle channel-drag" title="اسحب القناة">☰</span>
                             <div class="channel-info">📺 ${channel.name}</div>
+                            <button class="edit-channel-btn" title="تعديل القناة ورابطها">✏️</button>
                         `;
-                        channelDiv.onclick = () => handleChannelClick(channel.url, channelDiv);
+                        
+                        // تخصيص حدث الضغط مع عزل أزرار السحب والتعديل المباشر
+                        channelDiv.onclick = (e) => {
+                            if (e.target.closest('.drag-handle') || e.target.closest('.edit-channel-btn')) return;
+                            handleChannelClick(channelDiv.dataset.url, channelDiv);
+                        };
+
+                        // برمجة زر تعديل بيانات القناة المنفردة عبر الباسورد المشفر
+                        channelDiv.querySelector('.edit-channel-btn').onclick = (e) => {
+                            e.stopPropagation();
+                            const passwordInput = prompt("الرجاء إدخال كلمة المرور لتأكيد تعديل بيانات القناة:");
+                            if (passwordInput === null) return;
+                            
+                            if (validatePassword(passwordInput)) {
+                                const currentName = channelDiv.dataset.name;
+                                const currentUrl = channelDiv.dataset.url;
+                                const newName = prompt("أدخل الاسم الجديد للقناة (اتركه فارغاً للإبقاء الحالي):", currentName);
+                                const newUrl = prompt("أدخل الرابط/الموقع الجديد للقناة (اتركه فارغاً للإبقاء الحالي):", currentUrl);
+                                
+                                if (newName && newName.trim() !== "") {
+                                    channelDiv.dataset.name = newName.trim();
+                                    channelDiv.querySelector('.channel-info').textContent = "📺 " + newName.trim();
+                                }
+                                if (newUrl && newUrl.trim() !== "") {
+                                    channelDiv.dataset.url = newUrl.trim();
+                                }
+                                saveNewOrderToServer();
+                            } else {
+                                alert("⚠️ كلمة المرور خاطئة! تم إلغاء تعديل القناة.");
+                            }
+                        };
+
                         channelsDiv.appendChild(channelDiv);
                     });
                 }
@@ -422,6 +470,26 @@
                     const isVisible = channelsDiv.style.display === 'flex';
                     channelsDiv.style.display = isVisible ? 'none' : 'flex';
                     headerDiv.querySelector('.toggle-icon').textContent = isVisible ? '▼' : '▲';
+                };
+
+                // برمجة ميزة تعديل اسم المجلد النشط مباشرة بالسيرفر
+                headerDiv.querySelector('.edit-folder-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    const newName = prompt("أدخل الاسم الجديد للمجلد:", categoryName);
+                    if (!newName) return;
+                    const cleanNewName = cleanFolderName(newName);
+                    if (cleanNewName === categoryName) return;
+
+                    statusText.textContent = "⏳ جاري تعديل اسم المجلد...";
+                    db.ref('iptv_playlist').child(categoryName).once('value', (snapshot) => {
+                        const oldData = snapshot.val();
+                        if (oldData && oldData.channels && Array.isArray(oldData.channels)) {
+                            oldData.channels.forEach(ch => { if(ch) ch.category = cleanNewName; });
+                        }
+                        db.ref('iptv_playlist').child(cleanNewName).set(oldData).then(() => {
+                            db.ref('iptv_playlist').child(categoryName).remove();
+                        });
+                    });
                 };
 
                 headerDiv.querySelector('.import-to-folder-btn').onclick = (e) => {
@@ -465,6 +533,57 @@
                 });
             });
         }
+
+        // معالجة وإضافة مجموعة من الروابط دفعة واحدة باسم مشترك وترقيم تلقائي ذكي
+        document.getElementById('batch-add-btn').onclick = () => {
+            const baseName = prompt("أدخل الاسم المشترك للقنوات (مثال: beIN Sport):");
+            if (!baseName || baseName.trim() === "") return;
+            const targetFolder = prompt("أدخل اسم المجلد المراد الإضافة إليه:");
+            if (!targetFolder || targetFolder.trim() === "") return;
+            const cleanFolder = cleanFolderName(targetFolder);
+            
+            const linksInput = prompt("أدخل الروابط مفصولة بأسطر أو علامة فواصل أو | :");
+            if (!linksInput) return;
+            const links = linksInput.split(/[\n,\|]+/).map(l => l.trim()).filter(l => l !== '');
+            if (links.length === 0) return;
+
+            statusText.textContent = "⏳ جاري تجميع وإضافة القنوات الجديدة للسيرفر...";
+            db.ref('iptv_playlist').child(cleanFolder).once('value', (snapshot) => {
+                const folderData = snapshot.val() || {};
+                let currentOrder = (folderData && typeof folderData === 'object' && 'order' in folderData) ? folderData.order : null;
+                let currentChannels = (folderData && typeof folderData === 'object' && 'channels' in folderData) ? folderData.channels : [];
+                if (!Array.isArray(currentChannels)) currentChannels = [];
+
+                if (currentOrder === null) {
+                    db.ref('iptv_playlist').once('value', (mainSnapshot) => {
+                        const allData = mainSnapshot.val() || {};
+                        currentOrder = Object.keys(allData).length;
+                        executeBatchSave();
+                    });
+                } else {
+                    executeBatchSave();
+                }
+
+                function executeBatchSave() {
+                    let startIndex = currentChannels.length;
+                    links.forEach((url, i) => {
+                        currentChannels.push({
+                            name: `${baseName.trim()} ${startIndex + i + 1}`,
+                            url: url,
+                            category: cleanFolder,
+                            order: startIndex + i
+                        });
+                    });
+
+                    db.ref('iptv_playlist').child(cleanFolder).set({
+                        order: currentOrder,
+                        channels: currentChannels
+                    }).then(() => {
+                        statusText.textContent = "🟢 تم إضافة مجموعة الروابط بنجاح!";
+                    });
+                }
+            });
+        };
 
         exportBtn.onclick = () => {
             statusText.textContent = "⏳ جاري تجميع القنوات للتصدير...";
