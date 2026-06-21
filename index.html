@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1200">
+    <title>مشغل IPTV السحابي المتكامل</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #121212; color: #fff; font-family: Tahoma, Arial, sans-serif;
+            display: flex; flex-direction: column;
+        }
+
+        .header {
+            padding: 12px; background-color: #1f1f1f; text-align: center; 
+            border-bottom: 2px solid #e50914; z-index: 10;
+            display: flex; justify-content: center; gap: 6px; align-items: center;
+            flex-wrap: wrap;
+        }
+        .upload-btn, .add-folder-btn, .export-btn {
+            padding: 10px 12px; border: none; 
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+            color: white;
+        }
+        .upload-btn { background-color: #e50914; }
+        .add-folder-btn { background-color: #28a745; }
+        .export-btn { background-color: #6f42c1; }
+        
+        .mode-btn {
+            background-color: #007bff; color: white; padding: 10px 12px; border: none;
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+        }
+        .mode-btn.web-mode { background-color: #17a2b8; color: white; }
+        .mode-btn.external-mode { background-color: #ff9800; color: #000; }
+
+        /* ستايلات الأزرار الجديدة المضافة بالشريط العلوي */
+        .nav-btn {
+            background-color: #495057; color: white; padding: 10px 12px; border: none;
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+        }
+        .fs-btn {
+            background-color: #20c997; color: white; padding: 10px 12px; border: none;
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+        }
+        .close-btn {
+            background-color: #921c27; color: white; padding: 10px 12px; border: none;
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+        }
+
+        .clear-all-btn {
+            background-color: #333; color: #ff3333; padding: 10px 12px; border: 1px solid #ff3333; 
+            border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: bold;
+        }
+        
+        input[type="file"] { display: none; }
+        
+        .status-bar {
+            background-color: #292929; color: #00ffcc; font-size: 13px; 
+            padding: 5px 10px; text-align: center; border-bottom: 1px solid #333;
+        }
+        
+        .video-container {
+            width: 100%; background-color: #000; display: flex; 
+            justify-content: center; align-items: center; border-bottom: 1px solid #333;
+        }
+        video, #web-player { width: 100%; height: 35vh; max-height: 35vh; outline: none; border: none; }
+        #web-player { display: none; background-color: #000; }
+        
+        .playlist-container {
+            flex-grow: 1; overflow-y: auto; padding: 10px; background-color: #121212;
+            padding-bottom: 50px;
+        }
+        
+        .folder {
+            background-color: #2a2a2a; margin-bottom: 10px; border-radius: 8px; overflow: hidden;
+        }
+        .folder-header {
+            padding: 15px; background-color: #222; cursor: pointer; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center;
+            border-right: 4px solid #e50914; user-select: none;
+        }
+        
+        .channels-list {
+            display: none; flex-direction: column; background-color: #1a1a1a; min-height: 40px;
+        }
+        .channels-list:empty::after {
+            content: "مجلد فارغ.. اسحب قنوات هنا أو اضغط 📥 للاستيراد";
+            color: #666; font-size: 12px; text-align: center; padding: 12px;
+        }
+        
+        .channel-item {
+            padding: 12px 15px; border-bottom: 1px solid #333; cursor: pointer; 
+            display: flex; align-items: center; font-size: 14px; transition: background 0.2s;
+            user-select: none;
+        }
+        
+        .drag-handle {
+            cursor: grab; margin-left: 10px; color: #888; font-size: 18px; padding: 5px;
+        }
+        .drag-handle:active { cursor: grabbing; }
+
+        .channel-info { flex-grow: 1; display: flex; align-items: center; }
+        
+        .folder-actions { display: flex; align-items: center; gap: 5px; }
+        .delete-folder-btn, .import-to-folder-btn {
+            background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px;
+        }
+        .import-to-folder-btn { color: #00ffcc; }
+        .delete-folder-btn { color: #ff3333; }
+        
+        .channel-item.active { background-color: #440000; }
+        .sortable-ghost { opacity: 0.4; background-color: #e50914; }
+    </style>
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link rel="manifest" href="./manifest.json?v=v1782040422343">
+    <meta name="theme-color" content="#c270c0">
+    <link rel="apple-touch-icon" href="./icon-192.png?v=v1782040422343">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js?v=v1782040422343')
+            .then(reg => console.log('SW Registered'))
+            .catch(err => console.log('SW Failed', err));
+        });
+      }
+    </script>
+</head>
+<body>
+
+    <div class="header">
+        <label for="m3u-upload" class="upload-btn">📂 استيراد ملف كامل</label>
+        <input type="file" id="m3u-upload" accept=".m3u,.m3u8,text/plain">
+        <button id="export-btn" class="export-btn">📤 تصدير القنوات</button>
+        <button id="add-folder-btn" class="add-folder-btn">📁 مجلد جديد</button>
+        <button id="mode-toggle-btn" class="mode-btn">📺 الوضع: داخلي</button>
+        
+        <button id="prev-btn" class="nav-btn">◀️ السابقة</button>
+        <button id="next-btn" class="nav-btn">التالية ▶️</button>
+        <button id="fullscreen-btn" class="fs-btn">📱 ملء الشاشة</button>
+        <button id="close-player-btn" class="close-btn">❌ إغلاق</button>
+        
+        <button id="clear-all-btn" class="clear-all-btn">🗑️ مسح الكل</button>
+    </div>
+
+    <input type="file" id="folder-specific-upload" accept=".m3u,.m3u8,text/plain">
+
+    <div class="status-bar" id="status-text">جاري الاتصال بالسيرفر...</div>
+
+    <div class="video-container" id="player-area">
+        <video id="video-player" controls playsinline autoplay preload="auto" poster="https://via.placeholder.com/640x360/000000/FFFFFF/?text=IPTV+Player"></video>
+        <iframe id="web-player" allow="autoplay; encrypted-media; fullscreen" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"></iframe>
+    </div>
+
+    <div class="playlist-container" id="playlist"></div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtIkF-UhkeFa-cxutgJAQpR7K_IjKxloc",
+            authDomain: "spygame-337ee.firebaseapp.com",
+            databaseURL: "https://spygame-337ee-default-rtdb.firebaseio.com", 
+            projectId: "spygame-337ee",
+            storageBucket: "spygame-337ee.firebasestorage.app"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const video = document.getElementById('video-player');
+        const webPlayer = document.getElementById('web-player');
+        const playerArea = document.getElementById('player-area');
+        const playlistContainer = document.getElementById('playlist');
+        const statusText = document.getElementById('status-text');
+        const modeToggleBtn = document.getElementById('mode-toggle-btn');
+        const folderSpecificUpload = document.getElementById('folder-specific-upload');
+        const exportBtn = document.getElementById('export-btn');
+        
+        let hls = null;
+        let isSorting = false;
+        let targetImportFolder = '';
+        
+        let currentMode = localStorage.getItem('global_play_mode') || 'internal';
+        updateModeButtonUI();
+
+        function validatePassword(input) {
+            const secretCodes = [35, 90, 77, 115, 100, 52, 50, 100, 42];
+            if (!input || input.length !== secretCodes.length) return false;
+            for (let i = 0; i < secretCodes.length; i++) {
+                if (input.charCodeAt(i) !== secretCodes[i]) return false;
+            }
+            return true;
+        }
+
+        function cleanFolderName(name) {
+            return name.trim().replace(/[\.\$\#\[\]\/]/g, "-");
+        }
+
+        modeToggleBtn.onclick = () => {
+            if (currentMode === 'internal') {
+                currentMode = 'web';
+            } else if (currentMode === 'web') {
+                currentMode = 'external';
+            } else {
+                currentMode = 'internal';
+            }
+            localStorage.setItem('global_play_mode', currentMode);
+            updateModeButtonUI();
+        };
+
+        function updateModeButtonUI() {
+            if (currentMode === 'external') {
+                modeToggleBtn.textContent = "↗️ الوضع: خارجي";
+                modeToggleBtn.classList.add('external-mode');
+                modeToggleBtn.classList.remove('web-mode');
+                playerArea.style.display = 'none';
+                video.pause();
+                webPlayer.src = "about:blank";
+            } else if (currentMode === 'web') {
+                modeToggleBtn.textContent = "🌐 الوضع: مشغل موقع";
+                modeToggleBtn.classList.remove('external-mode');
+                modeToggleBtn.classList.add('web-mode');
+                playerArea.style.display = 'flex';
+                video.style.display = 'none';
+                webPlayer.style.display = 'block';
+                video.pause();
+            } else {
+                modeToggleBtn.textContent = "📺 الوضع: داخلي";
+                modeToggleBtn.classList.remove('external-mode');
+                modeToggleBtn.classList.remove('web-mode');
+                playerArea.style.display = 'flex';
+                video.style.display = 'block';
+                webPlayer.style.display = 'none';
+                webPlayer.src = "about:blank";
+            }
+        }
+
+        db.ref('iptv_playlist').on('value', (snapshot) => {
+            if (isSorting) return;
+            const categories = snapshot.val();
+            if (categories) {
+                statusText.textContent = "🟢 متصل: تم مزامنة البيانات والترتيب";
+                statusText.style.color = "#00ffcc";
+                renderPlaylist(categories);
+            } else {
+                statusText.textContent = "🟡 السيرفر فارغ حالياً";
+                statusText.style.color = "#ffcc00";
+                playlistContainer.innerHTML = '<div style="text-align: center; padding: 30px; color: #888;">لا توجد قنوات بالسيرفر.</div>';
+            }
+        });
+
+        function handleChannelClick(url, channelElement) {
+            if (currentMode === 'external') {
+                window.open(url, '_blank');
+            } else if (currentMode === 'web') {
+                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+                channelElement.classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                webPlayer.src = url;
+            } else {
+                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+                channelElement.classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                video.pause();
+                if (Hls.isSupported()) {
+                    if (hls) hls.destroy();
+                    hls = new Hls();
+                    hls.loadSource(url);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        video.play().catch(err => console.log("Autoplay prevented:", err));
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = url;
+                    video.addEventListener('loadedmetadata', () => {
+                        video.play().catch(err => console.log("Autoplay prevented:", err));
+                    });
+                }
+            }
+        }
+
+        // تفاصيل معالجة وظائف الأزرار الجديدة (إغلاق، ملاحة القنوات، ملء الشاشة)
+        document.getElementById('close-player-btn').onclick = () => {
+            video.pause();
+            if (hls) hls.destroy();
+            video.src = "";
+            webPlayer.src = "about:blank";
+            document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        };
+
+        function navigateChannel(direction) {
+            const channels = Array.from(document.querySelectorAll('.channel-item'));
+            if (channels.length === 0) return;
+            const activeEl = document.querySelector('.channel-item.active');
+            let index = channels.indexOf(activeEl);
+            
+            if (direction === 'next') {
+                index = (index + 1) % channels.length;
+            } else if (direction === 'prev') {
+                index = (index - 1 + channels.length) % channels.length;
+            }
+            
+            if (index >= 0 && index < channels.length) {
+                const parentList = channels[index].closest('.channels-list');
+                if (parentList && parentList.style.display !== 'flex') {
+                    parentList.style.display = 'flex';
+                    const folderHeader = parentList.previousElementSibling;
+                    if (folderHeader) {
+                        const toggleIcon = folderHeader.querySelector('.toggle-icon');
+                        if (toggleIcon) toggleIcon.textContent = '▲';
+                    }
+                }
+                channels[index].click();
+            }
+        }
+        document.getElementById('prev-btn').onclick = () => navigateChannel('prev');
+        document.getElementById('next-btn').onclick = () => navigateChannel('next');
+
+        document.getElementById('fullscreen-btn').onclick = () => {
+            let elem = (currentMode === 'web') ? webPlayer : video;
+            if (!elem || playerArea.style.display === 'none') return;
+            
+            if (elem.requestFullscreen) { elem.requestFullscreen(); }
+            else if (elem.webkitRequestFullscreen) { elem.webkitRequestFullscreen(); }
+            else if (elem.msRequestFullscreen) { elem.msRequestFullscreen(); }
+        };
+
+        function saveNewOrderToServer() {
+            statusText.textContent = "⏳ جاري حفظ الترتيب الجديد بالسيرفر...";
+            const newCategories = {};
+            const folders = document.querySelectorAll('.folder');
+
+            folders.forEach((folderDiv, folderIndex) => {
+                const categoryName = folderDiv.dataset.category;
+                
+                const channelsData = [];
+                const channels = folderDiv.querySelectorAll('.channel-item');
+                channels.forEach((channelDiv, index) => {
+                    channelsData.push({
+                        name: channelDiv.dataset.name,
+                        url: channelDiv.dataset.url,
+                        category: categoryName,
+                        order: index
+                    });
+                });
+                
+                newCategories[categoryName] = {
+                    order: folderIndex,
+                    channels: channels.length === 0 ? "" : channelsData
+                };
+            });
+
+            db.ref('iptv_playlist').set(newCategories).then(() => {
+                statusText.textContent = "🟢 تم حفظ الترتيب بنجاح!";
+            });
+        }
+
+        function renderPlaylist(categories) {
+            playlistContainer.innerHTML = ''; 
+
+            const sortedCategories = Object.entries(categories).sort((a, b) => {
+                const orderA = (a[1] && typeof a[1] === 'object' && 'order' in a[1]) ? (a[1].order || 0) : 0;
+                const orderB = (b[1] && typeof b[1] === 'object' && 'order' in b[1]) ? (b[1].order || 0) : 0;
+                return orderA - orderB;
+            });
+
+            for (const [categoryName, categoryData] of sortedCategories) {
+                const folderDiv = document.createElement('div');
+                folderDiv.className = 'folder';
+                folderDiv.dataset.category = categoryName;
+
+                const channels = (categoryData && typeof categoryData === 'object' && 'channels' in categoryData) ? categoryData.channels : [];
+                const channelsArray = Array.isArray(channels) ? channels : [];
+
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'folder-header';
+                headerDiv.innerHTML = `
+                    <div style="display:flex; align-items:center;">
+                        <span class="drag-handle folder-drag" title="اسحب الفولدر">☰</span>
+                        <span>📁 <span class="folder-title">${categoryName}</span> <small class="channel-count" style="color:#aaa;">(${channelsArray.length})</small></span>
+                    </div>
+                    <div class="folder-actions">
+                        <button class="import-to-folder-btn" title="استيراد">📥</button>
+                        <button class="delete-folder-btn" title="مسح">🗑️</button>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                `;
+
+                const channelsDiv = document.createElement('div');
+                channelsDiv.className = 'channels-list';
+
+                if (Array.isArray(channels)) {
+                    channels.sort((a, b) => (a.order || 0) - (b.order || 0));
+                    channels.forEach(channel => {
+                        if(!channel) return;
+                        const channelDiv = document.createElement('div');
+                        channelDiv.className = 'channel-item';
+                        channelDiv.dataset.name = channel.name;
+                        channelDiv.dataset.url = channel.url;
+                        channelDiv.innerHTML = `
+                            <span class="drag-handle channel-drag" title="اسحب القناة">☰</span>
+                            <div class="channel-info">📺 ${channel.name}</div>
+                        `;
+                        channelDiv.onclick = () => handleChannelClick(channel.url, channelDiv);
+                        channelsDiv.appendChild(channelDiv);
+                    });
+                }
+
+                headerDiv.onclick = (e) => {
+                    if (e.target.closest('.drag-handle') || e.target.closest('.folder-actions button')) return;
+                    const isVisible = channelsDiv.style.display === 'flex';
+                    channelsDiv.style.display = isVisible ? 'none' : 'flex';
+                    headerDiv.querySelector('.toggle-icon').textContent = isVisible ? '▼' : '▲';
+                };
+
+                headerDiv.querySelector('.import-to-folder-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    targetImportFolder = categoryName;
+                    folderSpecificUpload.click();
+                };
+
+                headerDiv.querySelector('.delete-folder-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    const passwordInput = prompt(`الرجاء إدخال كلمة المرور لتأكيد حذف مجلد "${categoryName}":`);
+                    if (passwordInput === null) return;
+                    
+                    if (validatePassword(passwordInput)) {
+                        statusText.textContent = "⏳ جاري الحذف...";
+                        db.ref('iptv_playlist').child(categoryName).remove();
+                    } else {
+                        alert("⚠️ كلمة المرور خاطئة!");
+                    }
+                };
+
+                folderDiv.appendChild(headerDiv);
+                folderDiv.appendChild(channelsDiv);
+                playlistContainer.appendChild(folderDiv);
+            }
+
+            new Sortable(playlistContainer, {
+                animation: 150,
+                handle: '.folder-drag',
+                onStart: () => { isSorting = true; },
+                onEnd: () => { isSorting = false; saveNewOrderToServer(); }
+            });
+
+            document.querySelectorAll('.channels-list').forEach(list => {
+                new Sortable(list, {
+                    group: 'channelsGroup',
+                    animation: 150,
+                    handle: '.channel-drag',
+                    onStart: () => { isSorting = true; },
+                    onEnd: () => { isSorting = false; saveNewOrderToServer(); }
+                });
+            });
+        }
+
+        exportBtn.onclick = () => {
+            statusText.textContent = "⏳ جاري تجميع القنوات للتصدير...";
+            db.ref('iptv_playlist').once('value', (snapshot) => {
+                const categories = snapshot.val();
+                if (!categories) {
+                    alert("⚠️ لا توجد أي قنوات أو مجلدات محفوظة في السيرفر لتصديرها حالياً!");
+                    statusText.textContent = "🟢 متصل";
+                    return;
+                }
+                
+                let m3uContent = "#EXTM3U\n";
+                
+                const sortedCategories = Object.entries(categories).sort((a, b) => {
+                    const orderA = (a[1] && typeof a[1] === 'object' && 'order' in a[1]) ? (a[1].order || 0) : 0;
+                    const orderB = (b[1] && typeof b[1] === 'object' && 'order' in b[1]) ? (b[1].order || 0) : 0;
+                    return orderA - orderB;
+                });
+                
+                sortedCategories.forEach(([categoryName, categoryData]) => {
+                    const channels = (categoryData && typeof categoryData === 'object' && 'channels' in categoryData) ? categoryData.channels : [];
+                    if (Array.isArray(channels)) {
+                        const sortedChannels = [...channels].sort((a, b) => (a.order || 0) - (b.order || 0));
+                        sortedChannels.forEach(channel => {
+                            if (!channel) return;
+                            m3uContent += `#EXTINF:-1 group-title="${categoryName}",${channel.name}\n${channel.url}\n`;
+                        });
+                    }
+                });
+                
+                const blob = new Blob([m3uContent], { type: 'text/plain;charset=utf-8' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'iptv_backup_playlist.m3u';
+                link.click();
+                URL.revokeObjectURL(link.href);
+                statusText.textContent = "🟢 تم تصدير وتنزيل الملف بنجاح!";
+            });
+        };
+
+        document.getElementById('add-folder-btn').onclick = () => {
+            const folderNameInput = prompt("أدخل اسم المجلد الجديد:");
+            if (!folderNameInput) return;
+            const cleanName = cleanFolderName(folderNameInput);
+            
+            db.ref('iptv_playlist').once('value', (snapshot) => {
+                const currentData = snapshot.val() || {};
+                const folderCount = Object.keys(currentData).length;
+                db.ref('iptv_playlist').child(cleanName).set({
+                    order: folderCount,
+                    channels: ""
+                });
+            });
+        };
+
+        document.getElementById('clear-all-btn').onclick = () => {
+            const passwordInput = prompt("⚠️ أدخل كلمة المرور لتصفير ومسح السيرفر بالكامل:");
+            if (passwordInput === null) return;
+            if (validatePassword(passwordInput)) {
+                db.ref('iptv_playlist').remove();
+            } else {
+                alert("⚠️ كلمة المرور خاطئة!");
+            }
+        };
+
+        folderSpecificUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file || !targetImportFolder) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split('\n');
+                const newChannels = [];
+                let currentChannel = {};
+                let index = 0;
+
+                lines.forEach(line => {
+                    line = line.trim();
+                    if (line.startsWith('#EXTINF:')) {
+                        const nameParts = line.split(',');
+                        const name = nameParts.length > 1 ? nameParts[nameParts.length - 1].trim() : 'قناة';
+                        currentChannel = { name, category: targetImportFolder, order: index++ };
+                    } else if (line !== '' && !line.startsWith('#')) { 
+                        if (currentChannel.name) {
+                            currentChannel.url = line;
+                            newChannels.push(currentChannel);
+                            currentChannel = {};
+                        }
+                    }
+                });
+
+                if(newChannels.length > 0) {
+                    db.ref('iptv_playlist').child(targetImportFolder).once('value', (snapshot) => {
+                        const currentFolderData = snapshot.val() || {};
+                        const currentOrder = (currentFolderData && typeof currentFolderData === 'object' && 'order' in currentFolderData) ? currentFolderData.order : 0;
+                        db.ref('iptv_playlist').child(targetImportFolder).set({
+                            order: currentOrder,
+                            channels: newChannels
+                        });
+                    });
+                } else {
+                    alert("⚠️ ملف غير صالح.");
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        document.getElementById('m3u-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) { parseAndSaveM3U(e.target.result); };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        function parseAndSaveM3U(data) {
+            const lines = data.split('\n');
+            const categories = {};
+            let currentChannel = {};
+            let orderIndex = 0;
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('#EXTINF:')) {
+                    const groupMatch = line.match(/group-title="([^"]+)"/i);
+                    const category = groupMatch ? cleanFolderName(groupMatch[1]) : 'قنوات عامة';
+                    const nameParts = line.split(',');
+                    const name = nameParts.length > 1 ? nameParts[nameParts.length - 1].trim() : 'قناة';
+                    currentChannel = { name, category, order: orderIndex++ };
+                } else if (line !== '' && !line.startsWith('#')) {
+                    if (currentChannel.name) {
+                        currentChannel.url = line;
+                        if (!categories[currentChannel.category]) categories[currentChannel.category] = [];
+                        categories[currentChannel.category].push(currentChannel);
+                        currentChannel = {};
+                    }
+                }
+            });
+
+            const finalData = {};
+            let folderIdx = 0;
+            for (const [catName, chanList] of Object.entries(categories)) {
+                finalData[catName] = {
+                    order: folderIdx++,
+                    channels: chanList
+                };
+            }
+            db.ref('iptv_playlist').set(finalData);
+        }
+    </script>
+</body>
+</html>
